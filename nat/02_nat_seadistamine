@@ -1,0 +1,241 @@
+# NAT seadistamine Cisco ruuteril
+
+## Enne kui alustad
+
+NAT seadistamiseks pead teadma kolme asja:
+
+1. **Mis liides on "inside"?** — see, kus on sinu sisevõrk (privaatsed aadressid)
+2. **Mis liides on "outside"?** — see, kus on internet (avalik aadress)
+3. **Mis tüüpi NAT-i vaja?** — staatiline, dünaamiline või PAT
+
+```
+     INSIDE                    OUTSIDE
+  [PC-d LAN-is] ── G0/0 [Ruuter] G0/1 ── [Internet]
+  192.168.1.0/24              85.23.174.1
+```
+
+---
+
+## 1. Staatiline NAT
+
+Üks sisevõrgu aadress → üks avalik aadress. Alati.
+
+### Stsenaarium
+
+Sul on veebiserver aadressil 192.168.1.100 ja tahad, et see oleks internetist kättesaadav aadressil 85.23.174.100.
+
+### Käsud
+
+```
+R1(config)# interface GigabitEthernet0/0
+R1(config-if)# ip nat inside
+R1(config-if)# exit
+
+R1(config)# interface GigabitEthernet0/1
+R1(config-if)# ip nat outside
+R1(config-if)# exit
+
+R1(config)# ip nat inside source static 192.168.1.100 85.23.174.100
+```
+
+### Mis juhtus?
+
+| Käsk | Mida teeb |
+|------|-----------|
+| `ip nat inside` | Märgib liidese sisevõrgu pooleks |
+| `ip nat outside` | Märgib liidese internetipooleks |
+| `ip nat inside source static ...` | Loob püsiva seose kahe aadressi vahel |
+
+### Kontrolli
+
+```
+R1# show ip nat translations
+Pro  Inside global     Inside local      Outside local     Outside global
+---  85.23.174.100     192.168.1.100     ---               ---
+```
+
+---
+
+## 2. Dünaamiline NAT
+
+Sisevõrgu aadressid saavad avalikke aadresse **poolist** — automaatselt, aga 1:1.
+
+### Stsenaarium
+
+Sul on 10 arvutit (192.168.1.0/24), aga ainult 5 avalikku aadressi (85.23.174.10 – .14).
+
+### Käsud
+
+```
+! 1. Märgi liidesed
+R1(config)# interface G0/0
+R1(config-if)# ip nat inside
+R1(config-if)# exit
+R1(config)# interface G0/1
+R1(config-if)# ip nat outside
+R1(config-if)# exit
+
+! 2. Loo avalike aadresside pool
+R1(config)# ip nat pool MEIE-POOL 85.23.174.10 85.23.174.14 netmask 255.255.255.0
+
+! 3. Loo ACL, mis määrab, keda tõlgitakse
+R1(config)# access-list 1 permit 192.168.1.0 0.0.0.255
+
+! 4. Seo ACL ja pool kokku
+R1(config)# ip nat inside source list 1 pool MEIE-POOL
+```
+
+### Samm-sammult selgitus
+
+| Samm | Käsk | Mida teeb |
+|------|------|-----------|
+| Pool | `ip nat pool ...` | Määrab avalike aadresside vahemiku |
+| ACL | `access-list 1 permit ...` | Määrab, millised sisevõrgu aadressid tõlgitakse |
+| Seo | `ip nat inside source list 1 pool ...` | Ühendab ACL pooliga |
+
+> **NB!** ACL-is kasutatakse **wildcard maski** (0.0.0.255), MITTE subnetmaski!
+
+---
+
+## 3. PAT (Port Address Translation) — NAT Overload
+
+**Kõige tähtsam!** See on see, mida sa kõige rohkem kasutad.
+
+### Variant A: PAT väljundliidese aadressiga
+
+Kõige lihtsam — kasuta ruuteri outside liidese aadressi.
+
+```
+R1(config)# interface G0/0
+R1(config-if)# ip nat inside
+R1(config-if)# exit
+
+R1(config)# interface G0/1
+R1(config-if)# ip nat outside
+R1(config-if)# exit
+
+R1(config)# access-list 1 permit 192.168.1.0 0.0.0.255
+
+R1(config)# ip nat inside source list 1 interface G0/1 overload
+```
+
+**Võtmesõna on `overload`** — see teeb NAT-ist PAT-i!
+
+### Variant B: PAT pooliga
+
+Kui sul on mitu avalikku aadressi, aga tahad ikka PAT-i:
+
+```
+R1(config)# ip nat pool PAT-POOL 85.23.174.10 85.23.174.14 netmask 255.255.255.0
+R1(config)# access-list 1 permit 192.168.1.0 0.0.0.255
+R1(config)# ip nat inside source list 1 pool PAT-POOL overload
+```
+
+---
+
+## Võrdlus: käskude erinevus
+
+| NAT tüüp | Käsk | Erinevus |
+|-----------|------|----------|
+| Staatiline | `ip nat inside source static 10.0.0.1 200.1.1.1` | `static` + konkreetsed aadressid |
+| Dünaamiline | `ip nat inside source list 1 pool NIMI` | ACL + pool, **ilma** `overload` |
+| PAT (interface) | `ip nat inside source list 1 interface G0/1 overload` | `interface` + `overload` |
+| PAT (pool) | `ip nat inside source list 1 pool NIMI overload` | pool + `overload` |
+
+---
+
+## Kasulikud show käsud
+
+```
+! Vaata aktiivseid NAT tõlkeid
+R1# show ip nat translations
+
+! Vaata NAT statistikat
+R1# show ip nat statistics
+
+! Tühjenda NAT tabel (veaotsinguks)
+R1# clear ip nat translation *
+```
+
+### show ip nat translations näide (PAT)
+
+```
+R1# show ip nat translations
+Pro  Inside global      Inside local       Outside local      Outside global
+tcp  85.23.174.1:1024   192.168.1.10:4521  142.250.74.46:443  142.250.74.46:443
+tcp  85.23.174.1:1025   192.168.1.11:8834  142.250.74.46:443  142.250.74.46:443
+udp  85.23.174.1:1026   192.168.1.12:5353  8.8.8.8:53         8.8.8.8:53
+```
+
+Pane tähele: **Inside global** on kõigil sama (85.23.174.1), aga **port on erinev**. See ongi PAT!
+
+### show ip nat statistics näide
+
+```
+R1# show ip nat statistics
+Total active translations: 3 (1 static, 2 dynamic; 2 extended)
+Outside interfaces:
+  GigabitEthernet0/1
+Inside interfaces:
+  GigabitEthernet0/0
+Hits: 152  Misses: 3
+```
+
+---
+
+## Levinumad vead
+
+### 1. Inside/outside on vahetuses
+
+```
+! VALE — liidesed on ümber pöörtaud
+R1(config)# interface G0/0
+R1(config-if)# ip nat outside    ← peaks olema inside!
+```
+
+**Kontroll:** `show ip nat statistics` → vaata "Outside interfaces" ja "Inside interfaces"
+
+### 2. Puudu `overload`
+
+```
+! See on DÜNAAMILINE NAT, mitte PAT!
+R1(config)# ip nat inside source list 1 pool NIMI
+! Pool saab kiiresti otsa!
+
+! PAT jaoks lisa overload:
+R1(config)# ip nat inside source list 1 pool NIMI overload
+```
+
+### 3. ACL ei kata õigeid aadresse
+
+```
+! VALE — vale wildcard mask
+R1(config)# access-list 1 permit 192.168.1.0 255.255.255.0
+! See on subnet mask! ACL-is on vaja WILDCARD maski!
+
+! ÕIGE
+R1(config)# access-list 1 permit 192.168.1.0 0.0.0.255
+```
+
+### 4. Puudu marsruut
+
+NAT ei loo marsruute. Kui ruuteril pole marsruuti sisevõrku, siis tagasitee ei tööta.
+
+---
+
+## Kontrolli ennast
+
+1. Millised kaks liideste käsku on NAT jaoks alati vajalikud?
+2. Mis vahe on `ip nat inside source list 1 pool NIMI` ja sama käsk + `overload`?
+3. Miks kasutatakse ACL-is wildcard maski, mitte subnet maski?
+4. Kuidas kontrollida, kas NAT töötab? (mis `show` käsk)
+5. Mis juhtub, kui inside ja outside liidesed on vahetuses?
+
+---
+
+## Lisalugemine
+
+- [NetworkLessons: How to configure PAT](https://networklessons.com/ip-services/how-to-configure-pat-on-cisco-ios-router)
+- [NetworkLessons: Troubleshooting NAT/PAT](https://networklessons.com/ip-services/troubleshooting-nat-pat)
+- [Cisco: Configure NAT](https://www.cisco.com/c/en/us/support/docs/ip/network-address-translation-nat/13772-12.html)
+- [Cisco: NAT Local and Global Definitions](https://www.cisco.com/c/en/us/support/docs/ip/network-address-translation-nat/4606-8.html)

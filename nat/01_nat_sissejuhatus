@@ -1,0 +1,188 @@
+# NAT
+
+## Osa 1: Miks NAT üldse olemas on?
+
+Enne kui me hakkame käskudest rääkima, mõtleme korraks järele — miks NAT üldse leiutati? Mis probleem see lahendab?
+
+Teeme ühe lihtsa arvutuse. IPv4 aadress on 32-bitine number. See tähendab, et kokku on olemas 2 astmes 32 aadressi, mis on umbes 4,3 miljardit. Tundub palju, eks? Aga mõtle nüüd, mitu seadet on praegu maailmas internetti ühendatud. Telefonid, laptopid, serverid, IoT seadmed, nutikellad, telerid — kokku üle 15 miljardi. Matemaatika lihtsalt ei klapi. Aadresse on kolm korda vähem kui seadmeid.
+
+Üks lahendus oleks minna üle IPv6 peale, kus aadressi pikkus on 128 bitti ja aadresse on nii palju, et igale aatomile Maal jaguks. Aga IPv6 üleminek võtab aega — kogu infrastruktuur tuleb ümber ehitada. Nii et vahepeal vajame mingit praktilist lahendust.
+
+See lahendus on NAT — Network Address Translation. Idee on lihtne: mitu seadet jagab ühte avalikku aadressi. Sinu ISP annab sulle ühe avaliku IP ja sinu kodus on viis seadet, mis kõik kasutavad internetti läbi selle ühe aadressi.
+
+![NAT üldskeem — privaatne võrk, ruuter ja internet](https://media.geeksforgeeks.org/wp-content/uploads/20250203170255888522/7.jpg)
+
+Hea analoogia on hotell. Hotellis on sada tuba, aga hotellil on üks telefoninumber. Kui keegi helistab hotelli, võtab administraator vastu ja suunab kõne õigesse tuppa. Väljast helistajal pole aimugi, mis tuba number see on — ta teab ainult hotelli numbrit. NAT töötab täpselt samamoodi. Ruuter on administraator, sisevõrgu seadmed on toad ja avalik IP on hotelli telefoninumber.
+
+
+## Osa 2: Privaatsed ja avalikud aadressid
+
+NAT saab töötada ainult sellepärast, et meil on kaks tüüpi IP-aadresse. Esimene tüüp on privaatsed aadressid, mis on defineeritud RFC 1918 standardis. Need aadressid on mõeldud ainult sisevõrkude jaoks ja neid ei saa internetis kasutada — ruuterid lihtsalt ei marsruudi neid edasi.
+
+Privaatseid vahemikke on kolm. Esimene on 10.0.0.0/8, mis annab umbes 16,7 miljonit aadressi — seda kasutavad tihti suured organisatsioonid. Teine on 172.16.0.0/12 ehk 172.16.0.0 kuni 172.31.255.255, mis annab umbes miljon aadressi. Kolmas on 192.168.0.0/16, mis annab umbes 65 tuhat aadressi ja seda kasutab enamik koduseid ruutereid.
+
+Nüüd praktiline ülesanne — võtke oma telefonid välja ja vaadake, mis IP-aadress teil WiFi võrgus on. Minge Settings, WiFi, ja otsige oma IP üles. Mis vahemikku see kuulub? Tõenäoliselt näete midagi nagu 192.168.1.something — see ongi privaatne aadress.
+
+Teine tüüp on avalikud aadressid. Need on kõik ülejäänud aadressid, mida ISP-d jaotavad. Avalik aadress on unikaalne kogu internetis — kahel seadmel ei saa olla sama avalik aadress. Kui sa lähed näiteks whatismyip.com peale, siis sa näed oma võrgu avalikku aadressi, mille ISP sulle andis.
+
+Oluline on aru saada: privaatne aadress on nagu sinu korteri number majas. See on unikaalne maja sees, aga maailmas on tuhandeid kortereid numbriga 5. Avalik aadress on nagu maja postiaadress — see on unikaalne kogu linnas.
+
+
+## Osa 3: Kuidas NAT tegelikult töötab
+
+Vaatame nüüd samm-sammult, mis juhtub, kui sinu arvuti tahab Google'i veebilehte avada. Oletame, et sinu PC aadress on 192.168.1.10, ruuteri avalik aadress on 85.23.174.1 ja Google serveri aadress on 142.250.74.46.
+
+![NAT tööpõhimõte — kuidas pakett liigub läbi ruuteri](https://media.geeksforgeeks.org/wp-content/uploads/20250811151338096207/working_of_nat.webp)
+
+Esimene samm — sinu PC loob paketi. Lähteaadressiks paneb ta oma aadressi 192.168.1.10 ja sihtaadressiks Google serveri 142.250.74.46. Pakett läheb default gateway kaudu ruuterisse.
+
+Teine samm — ruuter võtab paketi vastu oma sisevõrgu liideselt. Ta vaatab sihtaadressi ja saab aru, et see pakett läheb internetti. Nüüd teeb ruuter kriitilise asja: ta **asendab lähteaadressi**. Privaatne aadress 192.168.1.10 vahetatakse välja ruuteri enda avaliku aadressi 85.23.174.1 vastu. Samal ajal kirjutab ruuter NAT tabelisse rea: "port 12345 kuulub seadmele 192.168.1.10". Siis saadab ta paketi edasi internetti.
+
+Kolmas samm — Google server saab paketi kätte. Mis aadressi ta näeb lähteaadressina? 85.23.174.1. Google'il pole aimugi, et kusagil on olemas arvuti aadressiga 192.168.1.10. Ta näeb ainult ruuteri avalikku aadressi. Google koostab vastuse ja saadab selle tagasi aadressile 85.23.174.1.
+
+Neljas samm — vastus jõuab ruuterini. Ruuter vaatab sihtporti, leiab NAT tabelist vastava rea ja saab aru: "ahaa, port 12345 on PC1 oma." Ruuter asendab sihtaadressi — 85.23.174.1 muutub tagasi 192.168.1.10-ks — ja saadab paketi sisevõrku PC1-le.
+
+Kogu see protsess toimub iga paketi puhul ja nii kiiresti, et kasutaja ei märka midagi. Aga pane tähele olulist asja: Google ei tea kunagi, et sinu arvuti eksisteerib. Kogu suhtlus käib läbi ruuteri avaliku aadressi.
+
+
+## Osa 4: NAT terminoloogia
+
+Cisco kasutab NAT-i kirjeldamiseks nelja terminit ja need tulevad eksamitel kindlasti ette. Alguses tunduvad segased, aga tegelikult on loogika lihtne — pead lihtsalt aru saama kahest asjast.
+
+Esimene paar on **Inside ja Outside**. See vastab küsimusele: kus seade füüsiliselt asub? Kui seade on meie võrgus, siis ta on Inside. Kui seade on internetis, siis ta on Outside. Lihtne.
+
+Teine paar on **Local ja Global**. See vastab küsimusele: millisest vaatepunktist me aadressi vaatame? Local tähendab, et vaatame sisevõrgu perspektiivist — mis aadress see meie jaoks on. Global tähendab, et vaatame interneti perspektiivist — mis aadress see ülejäänud maailma jaoks on.
+
+Nüüd paneme need kokku. **Inside Local** on meie sisevõrgu seadme aadress nii nagu meie teda näeme — see on privaatne aadress, näiteks 192.168.1.10. **Inside Global** on sama seade, aga nii nagu internet teda näeb — see on avalik aadress, näiteks 85.23.174.1. Sisuliselt on Inside Local ja Inside Global sama seade, lihtsalt eri vaatepunktist.
+
+![NAT Inside ja Outside aadressid](https://media.geeksforgeeks.org/wp-content/uploads/20250925155658939972/NAT.webp)
+
+**Outside Global** on välise serveri päris aadress internetis, näiteks Google 142.250.74.46. **Outside Local** on sama serveri aadress nii nagu meie sisevõrk teda näeb. Enamasti on Outside Local ja Outside Global samad, sest me tavaliselt väliseid aadresse ei tõlgi.
+
+Meeldejätmise trikk: Inside/Outside = KOHT, kus seade on. Local/Global = VAADE, kust vaatad. Kui sa tead need kaks asja, siis saad alati õige terminiga pihta.
+
+
+## Osa 5: Kolm NAT tüüpi
+
+NAT-il on kolm varianti ja igal on oma kasutuskoht.
+
+![NAT tüübid — Static NAT, Dynamic NAT, PAT](https://media.geeksforgeeks.org/wp-content/uploads/20250812123705780750/Static-NAT.webp)
+
+**Staatiline NAT** on kõige lihtsam — üks privaatne aadress on alati seotud ühe avaliku aadressiga. Näiteks 192.168.1.10 on alati 85.23.174.10 ja 192.168.1.11 on alati 85.23.174.11. See on kasulik siis, kui sul on server, mis peab olema väljastpoolt kättesaadav. Näiteks veebiserver — kliendid peavad saama alati sama aadressi kaudu sinu serverini. Probleem on selles, et iga seade vajab oma avalikku aadressi, mis ei säästa ühtegi aadressi.
+
+**Dünaamiline NAT** on natuke targem. Ruuteril on aadresside kogum ehk pool — näiteks kuus avalikku aadressi. Kui seade tahab internetti, saab ta poolist esimese vaba aadressi. Kui ta lõpetab, läheb aadress tagasi pooli. Probleem: kui pool saab otsa, siis järgmine seade ei saa internetti. Kümme arvutit ja kuus aadressi — neli arvutit ootavad.
+
+**PAT ehk Port Address Translation** on see, mida kõik tegelikult kasutavad. Seda kutsutakse ka NAT Overload. Siin jagavad kõik seadmed ühte avalikku aadressi ja eristamine käib pordinumbrite abil. PC1 saadab paketi pordist 45123, PC2 pordist 52847, PC3 pordist 33901 — ruuter teab portide järgi, kellele vastus kuulub. Kuna porte on umbes 65 000, suudab üks avalik IP teenindada tuhandeid seadmeid korraga.
+
+PAT on see, mis sinu kodus töötab. Sinu ISP andis ühe avaliku IP ja sinu kõik seadmed — telefon, laptop, teler, mänguseade — kasutavad kõik seda ühte aadressi. Seepärast on PAT kõige levinum NAT tüüp maailmas.
+
+
+## Osa 6: PAT seadistamine Cisco ruuteril
+
+Nüüd läheme praktiliseks. PAT seadistamine Cisco ruuteril koosneb neljast sammust.
+
+Esimene samm — märgi ära, kumb liides on inside ja kumb outside. Inside on see, kus on sinu sisevõrk privaatsete aadressidega. Outside on see, kus on internet. See on oluline, sest ruuter peab teadma, kummal pool NAT tõlkimine toimub.
+
+```
+R1(config)# interface G0/0
+R1(config-if)# ip nat inside
+R1(config-if)# exit
+
+R1(config)# interface G0/1
+R1(config-if)# ip nat outside
+R1(config-if)# exit
+```
+
+Teine samm — loo ACL, mis ütleb ruuterile, milliste aadressidega liiklust tõlkida. Tüüpiliselt lubad kogu oma sisevõrgu.
+
+```
+R1(config)# access-list 1 permit 192.168.1.0 0.0.0.255
+```
+
+Pane tähele — siin on **wildcard mask** 0.0.0.255, MITTE subnet mask 255.255.255.0. ACL-ides kasutatakse alati wildcard maski. See on üks levinumaid vigu, mida õpilased teevad.
+
+Kolmas samm — seo ACL ja väljundliides kokku ning lisa võlusõna `overload`.
+
+```
+R1(config)# ip nat inside source list 1 interface G0/1 overload
+```
+
+See üks rida ütleb ruuterile: "võta kõik paketid, mis vastavad ACL 1 reeglitele, tõlgi nende lähteaadress G0/1 liidese aadressiks ja kasuta porte, et eristada erinevaid seadmeid." Sõna `overload` on see, mis muudab tavalise NAT-i PAT-iks. Ilma selleta oleks see dünaamiline NAT ja iga seade vajaks oma avalikku aadressi.
+
+Neljas samm — kontrolli, kas töötab.
+
+```
+R1# show ip nat translations
+R1# show ip nat statistics
+```
+
+`show ip nat translations` näitab sulle aktiivset NAT tabelit — iga ühenduse kohta näed Inside Local, Inside Global, Outside Local ja Outside Global aadressi koos pordinumbritega. `show ip nat statistics` annab ülevaate: mitu tõlget on aktiivset, millised liidesed on inside ja outside, mitu korda on NAT tabelit kasutatud (hits) ja mitu korda ei leitud vastet (misses).
+
+
+## Osa 7: Levinumad vead ja veaotsing
+
+NAT seadistamine on tegelikult lihtne, aga kolm viga korduvad pidevalt.
+
+Esimene ja kõige levinum — **inside ja outside liidesed on vahetuses**. Kui sa märgid LAN liidese outside'ks ja WAN liidese inside'ks, siis NAT tõlgib vastupidi ja mitte midagi ei tööta. Kontrolli alati `show ip nat statistics` käsuga — seal näed selgelt, millised liidesed on kummal pool.
+
+Teine viga — **overload puudu**. Kui sa kirjutad `ip nat inside source list 1 pool NIMI` ilma sõnata `overload`, siis sa tegid dünaamilise NAT-i, mitte PAT-i. See tähendab, et iga seade vajab poolist oma aadressi ja kui pool saab otsa, siis keegi enam internetti ei saa. Lisa alati `overload` lõppu, kui tahad PAT-i.
+
+Kolmas viga — **ACL-is on subnet mask wildcard maski asemel**. Cisco ACL-id kasutavad wildcard maski, kus nullid tähendavad "peab vastama" ja ühed tähendavad "ükskõik mis". Nii et 192.168.1.0 0.0.0.255 tähendab "kõik aadressid, mis algavad 192.168.1." Kui sa paned sinna 255.255.255.0, siis ACL ei tööta nii nagu ootad.
+
+Boonusviga — **marsruut puudub**. NAT ei loo marsruute. Kui ruuteril pole marsruuti tagasi sisevõrku, siis vastuspaketid ei jõua kohale. Alati kontrolli, et routing on korras.
+
+
+## Osa 8: Miks NAT pordinumbreid muudab?
+
+See on küsimus, mida õpilased tihti küsivad — miks PAT üldse porte muudab? Kas ei piisa ainult IP aadressi muutmisest?
+
+Kujuta ette olukorda: PC1 ja PC2 mõlemad avavad samal ajal Google'i veebilehe. Mõlemad kasutavad HTTPS-i ehk port 443 on sihtport. Aga mis juhtub, kui mõlemal juhuslikult on ka sama lähteport, näiteks 50000? Ruuter tõlgib mõlema paketi — mõlema lähteaadress muutub samaks avalikuks IP-ks. Nüüd on probleem: kui Google vastab aadressile 85.23.174.1 pordile 50000, siis ruuter ei tea, kas see kuulub PC1-le või PC2-le.
+
+PAT lahendab selle nii: kui teine seade kasutab juba hõivatud porti, siis ruuter valib uue, vaba pordi. PC1 jääb pordile 50000, aga PC2 saab näiteks 50001. Nüüd on iga ühendus unikaalselt tuvastatav kombinatsiooniga avalik IP + port. Google vastused pordile 50000 lähevad PC1-le, pordile 50001 lähevad PC2-le.
+
+Seepärast ongi PAT-il teoreetiline limiit umbes 65 000 ühendust ühe avaliku IP kohta — nii palju erinevaid pordinumbreid on olemas.
+
+
+## Osa 9: Port Forwarding — kuidas server väljast kättesaadavaks teha?
+
+PAT-iga on üks probleem — ühendust saab alustada ainult seestpoolt. Kui sinu kodus on veebiserver ja keegi internetist tahab sellele ligi pääseda, siis NAT blokeerib selle, sest NAT tabelis pole veel ühtegi kirjet selle ühenduse kohta.
+
+Lahendus on port forwarding ehk pordi suunamine. Sa ütled ruuterile: "kui keegi saadab paketi minu avalikule IP-le port 80 peale, suuna see alati edasi sisevõrgu aadressile 192.168.1.100 port 80." Cisco keeles on see staatiline NAT portiga:
+
+```
+R1(config)# ip nat inside source static tcp 192.168.1.100 80 85.23.174.1 80
+```
+
+See on sama põhimõte, mida kasutad kodus, kui seadistad ruuteris port forwardingi mänguserveri või kaamera jaoks. Sisuliselt lood sa NAT tabelisse püsiva kirje, mis ei sõltu sellest, kas ühendus algas seest- või väljastpoolt.
+
+---
+
+## Kokkuvõte
+
+NAT lahendab IPv4 aadresside nappuse probleemi, lastes mitmel seadmel jagada ühte avalikku aadressi. Kolmest tüübist on PAT kõige levinum, sest see kasutab porte, et eristada tuhandeid ühendusi ühe IP taga. Cisco terminoloogias on neli mõistet — Inside Local, Inside Global, Outside Local, Outside Global — kus Inside/Outside näitab seadme asukohta ja Local/Global näitab vaatepunkti. PAT seadistamine on neli sammu: märgi liidesed, loo ACL, seo kokku overload'iga, kontrolli show käskudega.
+
+---
+
+## Lisalugemine — head materjalid piltidega
+
+**Teooria ja selgitused (piltidega):**
+- GeeksforGeeks — NAT ülevaade (lihtsad skeemid, hea algajale): https://www.geeksforgeeks.org/computer-networks/network-address-translation-nat/
+- ComputerNetworkingNotes — NAT lihtsas keeles (Packet Tracer näited): https://www.computernetworkingnotes.com/ccna-study-guide/basic-concepts-of-nat-explained-in-easy-language.html
+- Firewall.cx — NAT kontseptsioon (detailsed paketi diagrammid): https://www.firewall.cx/networking-topics/network-address-translation-nat/227-nat-concepts.html
+- HowStuffWorks — NAT (hea analoogiatega selgitus): https://computer.howstuffworks.com/nat.htm
+- Wikipedia — NAT (tehniline, aga põhjalik): https://en.wikipedia.org/wiki/Network_address_translation
+
+**Cisco terminoloogia ja seadistamine (piltidega):**
+- Practical Networking — NAT terminoloogia (parim Inside/Outside/Local/Global selgitus + animatsioonid): https://www.practicalnetworking.net/stand-alone/cisco-nat-terminology/
+- Practical Networking — NAT artiklite seeria (Static NAT, Dynamic NAT, Dynamic PAT samm-sammult): https://www.practicalnetworking.net/series/nat/nat/
+- Cisco — Inside/Outside Local/Global definitsioonid (ametlik): https://www.cisco.com/c/en/us/support/docs/ip/network-address-translation-nat/4606-8.html
+- Cisco — NAT seadistamise juhend: https://www.cisco.com/c/en/us/support/docs/ip/network-address-translation-nat/13772-12.html
+
+**NetworkLessons (CCNA kursuse materjal):**
+- Introduction to NAT and PAT: https://networklessons.com/ip-services/introduction-to-nat-and-pat
+- How to configure PAT: https://networklessons.com/ip-services/how-to-configure-pat-on-cisco-ios-router
+- Troubleshooting NAT/PAT: https://networklessons.com/ip-services/troubleshooting-nat-pat
+
+**Interaktiivsed ja video:**
+- NetworkAcademy.io — PAT (NAT Overload) selgitus TCP sessioonidega: https://www.networkacademy.io/ccna/network-services/nat-overload-pat
+- OmniSecu — Inside/Outside Local/Global (lihtne skeem): https://www.omnisecu.com/cisco-certified-network-associate-ccna/inside-local-inside-global-outside-local-outside-global.php
