@@ -1,324 +1,223 @@
-# VPN — esimene päev: kus see üldse pildilt välja kasvab
+# VPN — esimene päev: kust see vajadus tekib
 
-**Kursus:** Arvutivõrgud II
-**Päev:** 1/3 (KORDAMINE — meeldetuletus + suur pilt)
-**Sinu eelteadmised:** VLAN, inter-VLAN routing, DHCP, NAT, ACL, OSPF. Krüpteerimisest tead nime järgi, et AES ja RSA on olemas.
+**Kursus:** Arvutivõrgud II  
+**Päev:** 1/3 (kordamine, meeldetuletus ja suur pilt)  
+**Eelteadmised:** VLAN, inter-VLAN routing, DHCP, NAT, ACL, OSPF; krüpteerimisest tead, et olemas on AES ja RSA.
 
-## 🎯 Mida sa pärast täna oskad
+## Mida sa pärast tänast oskad
 
 Pärast seda päeva oskad:
 
-- selgitada, miks me ei saa kaht filiaali lihtsalt VLANiga ühendada
-- põhjendada, miks oma kaabli paigaldamine kahe linna vahele pole tavaliselt mõistlik
-- näidata vähemalt kolme **erinevat olukorda**, kus VPN-i kasutatakse, ja seletada, mille poolest need erinevad
-- defineerida VPN-i nii, et iga sõna sees (virtual, private, network) ka midagi tähendab
-- eristada **site-to-site** ja **remote access** VPN-i
-- nimetada kolm asja, mida me VPN-iga tahame kaitsta (CIA)
+- selgitada, miks kahte filiaali ei saa lihtsalt VLAN-iga ühendada
+- põhjendada, miks oma kaabli vedamine kahe linna vahele ei ole tavaliselt mõistlik
+- tuua vähemalt kolm olukorda, kus VPN-i kasutatakse, ja selgitada nende erinevusi
+- defineerida VPN-i nii, et sõnad *virtual*, *private* ja *network* ka päriselt midagi tähendavad
+- eristada site-to-site ja remote access VPN-i
+- nimetada kolm asja, mida me VPN-iga kaitsta tahame: konfidentsiaalsus, terviklus ja autentimine
 
 ---
 
-## 0. Kuhu me eelmisel päeval jõudsime
+## 0. Kus me pooleli jäime
 
-Eile lõpetasime OSPF-iga. Kolm ruuterit, naabrid leidsid üksteist, marsruudid täitusid automaatselt, ping läks läbi. Hea uudis: routing **töötab**. Sinu kontoris ükskõik mis võrgustruktuur ehita — ruuter teab, kuhu pakk saata.
+Eelmisel korral lõpetasime OSPF-iga. Ruuterid leidsid naabrid üles, marsruudid tekkisid automaatselt ja ühendus töötas. See tähendas, et ruuter teadis, kuhu pakett edasi saata.
 
-Aga kogu see lugu eeldas ühte asja: **võrk oli sinu**. Sinu kaablid, sinu ruuterid, sinu IP-aadressid. OSPF rääkis sinu ruuterite vahel ja keegi väljast ei kuulanud.
+Sellel lahendusel oli aga üks oluline eeldus: võrk oli sinu kontrolli all. Kaablid, ruuterid ja aadressiruum kuulusid sulle.
 
-Täna küsime: **mis siis, kui võrk pole sinu?**
+Täna küsime: mis saab siis, kui võrk enam sinu oma ei ole?
 
-Konkreetne probleem: sul on firma, mille üks pool istub Tallinnas ja teine pool Tartus. Mõlemas otsas on oma sisevõrk. Vahel — `185 km` Eesti maad, mida sa ei oma. Tallinna inimene tahab Tartu failiserverit, Tartu inimene tahab Tallinna andmebaasi. Kuidas?
+Näide: ettevõtte üks kontor on Tallinnas ja teine Tartus. Mõlemas kohas on oma sisevõrk. Tallinna töötaja tahab kasutada Tartu failiserverit ja Tartu töötaja Tallinna andmebaasi. Kuidas need kaks võrku ühendada nii, et lahendus oleks nii toimiv kui ka turvaline?
 
-> ✏️ **Mõtle hetkeks paberile.** Enne kui me edasi läheme — proovi joonistada, **mis variandid** sul üldse oleksid kahe linna vahelise võrgu ehitamiseks. Mitte VPN-i — mis tahes lahendused. Kirjuta kolm tükki paberile.
+> ✏️ Enne edasi lugemist pane kirja kolm võimalikku lahendust, kuidas kahte linna omavahel ühendada.
 
 ---
 
-## 1. Variant A — VLAN ei sobi
+## 1. Variant A — VLAN ei lahenda seda
 
-Sa võiksid mõelda: "VLAN-id me oskame! Paneme Tallinna ja Tartu sama VLANi. Kõik ühes loogilises võrgus, valmis."
+Esimene mõte võib olla lihtne: paneme mõlemad kontorid samasse VLAN-i. Siis oleksid nad justkui ühes loogilises võrgus.
 
-**Aga see ei tööta.** Vaatame, miks.
+Praktikas see nii ei tööta. VLAN on loogiline jaotus füüsilise võrgu sees. VLAN-id liiguvad trunk-ühenduse kaudu ning trunk eeldab, et switchid on omavahel füüsiliselt ühendatud.
 
-VLAN on **logiline jaotus füüsilise võrgu sees**. Kaks olulist sõna: *logiline* ja *füüsilise*. Logiline tähendab, et VLAN-id ei ole päris kaabliga seotud — sama kaabli peal võivad mitu VLANi liikuda. Aga **füüsiline** osa on see, mille taga me täna oleme: VLANid liiguvad **trunk-pordi kaudu**, ja trunk-port on **kahe switchi vahel**. Need switchid peavad olema **omavahel kaabliga ühendatud**.
-
-```
+```text
 Tallinna kontor                    Tartu kontor
-                                       
-  SW1 ──trunk?── SW2     ←  185 km    ──     SW3 ──── PC
-   │                                          │
-   PC                                         PC
+
+  SW1 ── trunk? ── SW2   ← 185 km →   SW3 ─── PC
+   │                                      │
+   PC                                     PC
 ```
 
-Trunk-i ei saa **üle interneti** vedada. ISP ei tee sinu Etherneti raameid edasi — ta tegeleb IP-pakkidega ja need on **võrgukihi** (Layer 3) asi, VLAN on **kanali kihi** (Layer 2) asi. Sinu VLAN-info läheks kaduma kohe esimese ISP-ruuteri taga.
+Teenusepakkuja interneti kaudu sinu Etherneti kaadreid edasi ei saada. Internetis liiguvad IP-paketid, mitte sinu lokaalse võrgu Layer 2 raamid (frames). See tähendab, et tavalist VLAN-i ei saa lihtsalt kahe linna vahele „läbi interneti“ venitada.
 
-Lisaks: isegi kui sa kuidagi suudaks Layer 2-trunki kahe linna vahel ehitada (mõned ISP-d pakuvad seda teenust — nimetatakse `Carrier Ethernet` või `Metro Ethernet`), oleks see ikkagi **avatud**. VLAN ei krüpteeri midagi. Iga raami sisu liiguks puhta tekstina.
+Isegi kui teenusepakkuja pakuks Layer 2 ühendust, jääks teine probleem alles: VLAN ei krüpteeri midagi. Liiklus oleks küll ühendatud, aga mitte kaitstud.
 
-> 💡 **Kokkuvõte:** VLAN töötab seal, kus sa **kontrollid kaableid**. Kui kaabel pole sinu — VLAN ei toimi.
+**Järeldus:** VLAN sobib sinna, kus füüsiline ühendus on sinu kontrolli all. Kahe linna vahelise avaliku võrgu jaoks sellest ei piisa.
 
 ---
 
-## 2. Variant B — paneme oma kaabli
+## 2. Variant B — veame oma kaabli
 
-OK, kaabel on probleem. Aga me võiksime kaabli **päriselt paigaldada**. Telia või Elisa müüvad sulle **liisitud liini** (`leased line`) või **musta kiu** (`dark fiber`) — füüsiline kaabel Tallinna ja Tartu vahel, mida kasutab **ainult sinu firma**.
+Teine mõte on kasutada päris ühendust kahe koha vahel. Selleks võib rentida liisitud liini või musta kiu.
 
+```text
+Tallinna kontor ═════════════════ Tartu kontor
+                oma ühendus
 ```
-Tallinna kontor ════════════════ Tartu kontor
-                  oma kaabel
-              (rendib Telia)
-```
 
-**Plus:** see töötab. Kiirus on garanteeritud, latentsus on madal, pealtkuulajaid praktiliselt pole (raske ilma maad lahti kaevamata). Suurpangad, kindlustusfirmad, riigiasutused kasutavad seda kõige tundlikuma liikluse jaoks.
+Selle lahenduse pluss on lihtne: see töötab hästi. Kiirus on ette teada, viivitus tavaliselt väike ja ühendus ei jaga teed juhusliku internetiliiklusega.
 
-**Miinus:** hind. Liisitud liin Tallinn–Tartu maksab kuus tüüpiliselt mitu tuhat eurot. Kui sul on Tartus kaheksa inimest, on see lahendus **väga ebamõistlik**. Igale järgmisele filiaalile (Pärnu, Narva, Kuressaare) tuleb veel üks selline liin — või veel hullem, **kõigi vaheline pluss kõigi vaheline**, mis ruutkasvab.
+Miinus on hind. Kui ettevõttel on ainult paar väikest filiaali, võib selline lahendus olla liiga kallis. Mida rohkem filiaale lisandub, seda keerulisemaks ja kallimaks kogu ühendusskeem muutub.
 
-> ✏️ **Aruta paariga.** Sul on viis filiaali (Tallinn, Tartu, Pärnu, Narva, Kuressaare) ja kõik peavad omavahel ühenduses olema. Kui igale paari vahele eraldi kaabel — **mitu kaablit kokku** vaja oleks? Vihje: arvuta, mitu paari saab teha viiest punktist.
+Kui sul on viis filiaali ja igaüks peab kõigiga eraldi ühendatud olema, siis läheb vaja 10 ühendust. See kasvab kiiresti ebamõistlikuks.
 
-> **Vastus:** 10 kaablit. (5×4 / 2 = 10.) Kümme liisitud liini × paar tuhat eurot kuus = kuu kohta üle 20 000 €. Aastas üle veerand miljoni. Ainult kaablite eest.
-
-Liisitud liin on hea **kõige tähtsama liikluse jaoks** — pangaülekannete tagavaratee, riiklik infrastruktuur. Tavalisele firmale: **liiga kallis**.
+**Järeldus:** oma liin on tehniliselt hea, kuid enamasti liiga kallis ja halvasti skaleeruv.
 
 ---
 
-## 3. Variant C — saadame lihtsalt üle interneti
+## 3. Variant C — saadame liikluse lihtsalt üle interneti
 
-OK, oma kaabel kallis. Aga internet on **odav** — Tallinnas on sul juba ISP-ühendus, Tartus ka. **Saadame paketid lihtsalt sealt läbi**.
+Kolmas mõte tundub kõige odavam: Tallinnas on internet, Tartus on internet, saadame liikluse lihtsalt sealt kaudu.
 
+```text
+Tallinn ─ ISP ─ INTERNET ─ ISP ─ Tartu
 ```
-Tallinn ──── ISP1 ──── INTERNET ──── ISP2 ──── Tartu
-            (avalikud marsruuterid, kümned)
-```
 
-**Mis selle juures valesti läheb?** Vasta kolm asja:
+Siin tekib korraga mitu probleemi.
 
-1. ☐ ...
+- Keegi võib liiklust pealt kuulata.
+- Keegi võib teel pakette muuta.
+- Sa ei saa olla kindel, et teises otsas on päriselt õige seade.
+- Privaatsed sisevõrgu aadressid ei marsruudi üle avaliku interneti.
 
-2. ☐ ...
+See tähendab, et probleem ei ole ainult turvalisuses. Tavaline internet ei oska sinu sisevõrgu pakette niisama õigesse kohta viia.
 
-3. ☐ ...
-
-> 💡 **Lahti võtmiseks — proovi paarilisega 2 minutit.**
-
-> **Vastused, mida sa peaksid saama (kui ei tulnud meelde, loe rahulikult uuesti läbi):**
->
-> 1. **Keegi võib pealt kuulata.** Iga ISP-ruuter teel — sealhulgas teiste maade omad — näeb pakkide sisu. Kui sa saadad lepingu PDF, näeb see ruuter PDF-i. Kui sa saadad parooli — näeb parooli.
->
-> 2. **Keegi võib paketid teel ära muuta.** Ülekannete summad, lepingute sisu, e-kirjad — kõik on muudetav, kui pealtkuulaja ka samal teel asub.
->
-> 3. **Sa ei tea, kellega sa räägid.** Pakid lähevad Tallinnast välja, "kellelegi". Kuidas sa kindel oled, et teises otsas on tegelikult sinu Tartu ruuter, mitte keegi, kes mängib end sinu Tartu ruuteriks?
->
-> 4. **Sinu sisevõrgu IP-aadressid ei marsruudita üle interneti.** Tartu ruuteri sees on `10.10.1.0/24`, Tallinnas `10.10.2.0/24`. Need on **privaatsed aadressid**, mida ISP-marsruuterid ei tunne. Pakk lihtsalt **kuhugi ei jõua**.
-
-Probleem on **suurem kui ainult turvalisus**. Tavaline internet ka **füüsiliselt ei marsruudi** sinu sisevõrgu pakke kahe linna vahel.
+**Järeldus:** internet üksi on odav, kuid ei lahenda ei marsruutimist ega turvalisust.
 
 ---
 
-## 4. Variant D — VPN ütleb "tee tunneli sisse"
+## 4. Variant D — VPN teeb tunneli
 
-Kõik kolm eelmist varianti olid puudulikud. VLAN ei töötanud, oma kaabel kallis, internet avatud ja ei marsruudi sisevõrgu aadresse. VPN võtab need probleemid ükshaaval lahendusse.
+VPN lahendab eelmiste variantide peamised puudused. Idee on lihtne: sinu päris pakett pannakse teise paketi sisse.
 
-**Idee on lihtne — pane sinu pakid teise paki sisse.**
+```text
+Internetis liigub selline pakett:
 
-```
-Mis päriselt ringi liigub internetis:
-
-┌─────────────────────────────────────────────────────────┐
-│  Uus IP-päis           │  Krüpteeritud sisu             │
-│  (Tallinn → Tartu      │  ┌──────────────────────────┐  │
-│   avalikud IP-d)       │  │ Sinu päris pakett        │  │
-│                        │  │ (10.10.2.5 → 10.10.1.7)  │  │
-│                        │  └──────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
-        ↑                              ↑
-    ISP näeb seda                ISP-l pole sellele
-    ja marsruudib                 ligipääsu — krüpteeritud
+┌──────────────────────────────────────────────┐
+│ Välimine IP-päis                             │
+│ (avalikud aadressid)                         │
+│                                              │
+│ Krüpteeritud sisu                            │
+│ ┌──────────────────────────────────────────┐ │
+│ │ Sinu päris pakett                        │ │
+│ │ (näiteks 10.10.2.5 → 10.10.1.7)          │ │
+│ └──────────────────────────────────────────┘ │
+└──────────────────────────────────────────────┘
 ```
 
-Välimine paki päis kannab **avalikku adresseerimist** — Tallinna ruuteri välismaa IP-d ja Tartu ruuteri välismaa IP-d. ISP marsruutimine töötab nagu tavaliselt, sest need on **avalikud aadressid, mida ISP tunneb**.
+Välimine päis kasutab avalikke IP-aadresse, mida internet oskab marsruutida. Sees on sinu päris pakett koos sisevõrgu aadressidega. See sisemine osa on krüpteeritud.
 
-Aga **sees** on sinu päris pakett — sinu sisevõrgu IP-aadressidega, sinu rakenduse andmetega, kõik krüpteeritud. ISP näeb ainult ümbrise, mitte sisu.
+Siit tuleb ka nimetus **virtual private network**.
 
-Nimi **virtual private network** tähendab nüüd seda:
+- **Virtual** — sul ei ole päris oma kaablit.
+- **Private** — sisu on kõrvalistele osapooltele loetamatu.
+- **Network** — läbi tunneli saab liikuda kogu IP-liiklus, mitte ainult üks rakendus.
 
-- **Virtual:** ei ole päris oma kaabel. Pakk jagab teed kümnete teiste ISP-klientidega.
-- **Private:** sisu pole väljapaistav. Pealtkuulajal pole võtit, krüpteerimise tõttu loeb ta ainult juhuslikku müra.
-- **Network:** kogu IP-liiklus läheb läbi (mitte ainult üks rakendus nagu HTTPS-i puhul).
+VPN koosneb tegelikult kahest ideest:
 
-> 💡 **Kokkuvõte siin:** VPN võtab **kaks asja korraga** — tunneerimise (pakk paki sees) **ja** krüpteerimise. Eraldi kumbki ei lahenda kogu probleemi. Tunneerimine ilma krüpteerimiseta annab ühenduse (sinu sisevõrgu aadressid jõuavad kohale), aga ei kaitse sisu. Krüpteerimine ilma tunneerimiseta kaitseb sisu, aga ei lahenda marsruutimist.
+- **tunneleerimine** — üks pakett pannakse teise sisse
+- **krüpteerimine** — sees olev sisu tehakse võõrale loetamatuks
+
+Kui kasutad ainult tunneleerimist, saad küll ühenduse, kuid mitte kaitset. Kui kasutad ainult krüpteerimist, ei lahenda sa veel sisevõrgu aadresside marsruutimist. VPN vajab mõlemat.
 
 ---
 
-## 5. Aga see ei ole **ainult** Tartu–Tallinn
+## 5. Kus VPN-i kasutatakse
 
-Siiani võiksid mõelda, et VPN on ainult kahe kontori ühendamiseks. **See on kõige tavalisem juhtum, aga mitte ainus.**
+VPN ei ole ainult kahe kontori ühendamiseks. Tegelikult kohtab seda mitmes eri olukorras.
 
-Vaatame veel kolme reaalset kohta, kus VPN on igapäevatöös.
+### 5.1 Kahe võrgu vahel
 
-### 5.1 Serverite vahel — datakeskused ja pilved
+Kõige klassikalisem näide on kahe kontori või kahe andmekeskuse ühendamine. Seda nimetatakse **site-to-site VPN-iks**.
 
-Bolt, Wise, Pipedrive — kõigil neil on **mitu datakeskust**. Mõned omad, mõned AWS-i / Azure'i / Google Cloudi peal. Üks andmebaasi tagavarakoopia istub Eestis, teine Iirimaal või Frankfurdis.
-
-Need datakeskused **peavad omavahel rääkima**. Andmed sünkroniseeruvad: tehing, mis tehakse Eesti serveris, peab ka Frankfurdi serveris välja paistma — muidu kaotad transaktsioone.
-
-```
-Eesti datakeskus ═══ VPN (IPSec) ═══ Frankfurdi datakeskus
-                                                ║
-                                                VPN
-                                                ║
-                                       Iirimaa datakeskus
+```text
+Tallinn ═══ VPN ═══ Tartu
 ```
 
-Selle vahelise liikluse kaitsmiseks kasutatakse **serverite-vahelist VPN-i**. Tavaliselt site-to-site IPSec — täpselt nagu kahe kontoriruuteri vahel, aga otspunktid on **datakeskuste lüüsid** (firewall'id, koormusjaoturid). Kasutaja sellest mitte midagi ei tea.
+Selles mudelis on otspunktideks tavaliselt ruuterid või tulemüürid. Kasutaja ise ei pruugi aru saadagi, et ta liiklus läheb läbi VPN-i.
 
-> ✏️ **Mõtle:** mis võiks juhtuda, kui üks selline vahelink **ei oleks** krüpteeritud? Mis liiklus seal voolab? Mis info võib lekkida?
+### 5.2 Kasutaja ja ettevõtte vahel
 
-Vastus: kõik. Klientide makseinfo, salasõnad, isiklik info, sisemine API-suhtlus. Andmekaitse seaduste järgi (`GDPR`) **see oleks rikkumine** — ja Bolt / Wise tasemel firma puhul tähendaks see kümnetes miljonites trahvi.
+Kui töötaja on kodus või reisil, ei ole tema arvuti ettevõtte teine kontor. Siin kasutatakse **remote access VPN-i**.
 
-### 5.2 Teenusepakkujate vahel — pangandus ja MPLS VPN
-
-Pangad ei saada raha lihtsalt üle interneti. Kui sa teed Coopist ülekande SEB-i, **ei lähe see Coopi serverist SEB serverisse otse**. Vahel on **rahvusvaheline pangandusvõrk**, mille üks tuntumaid on SWIFT.
-
-SWIFT-võrk on ise pankadevaheline **eraldi võrk**, kuhu pankadel on eriühendused — kombinatsioon VPN-idest, sertifikaatidest, dedikeeritud liinidest. Kui üks pank tahab teisele teateid saata, läheb see SWIFTi võrgu kaudu, mis ise on aastakümneid ehitatud turvalisuse-keskse infrastruktuurina.
-
-Operaatorid ise (Telia, Elisa) pakuvad samuti **MPLS VPN** teenust — ärikliendid saavad teenusepakkujalt "virtuaalse erasalvõrgu", mis paistab oma sisemise võrguna, aga jookseb teenusepakkuja avalikul infrastruktuuril. See on **tüüpiline keskmise-suure ettevõtte lahendus** filiaalide ühendamiseks ilma, et iga filiaal peaks oma VPN-tunnelit konfigureerima.
-
-> 💡 **Mida pidada meeles:** VPN ei ole alati "ühe firma asi". On olemas **operaatori VPN-id**, kus VPN-i teenuse pakubki sulle ISP. Sina ei pea ise krüpteerimisega tegelema — see käib teenuse hinnas.
-
-### 5.3 Üksiku kasutaja jaoks — kodutöö
-
-Sina istud kodus, sülearvuti on 4G-modemiga internetis. Sul on vaja ettevõtte failiserverisse. Kogu eelmine struktuur — ruuterite-vaheline VPN — ei sobi siia, sest sinu kodu pole "ettevõtte teine kontor".
-
-Selle jaoks on **remote access VPN**. Sa käivitad sülearvutil kliendi (Cisco AnyConnect, OpenVPN, WireGuard, oma firma oma), logid sisse oma kontoriga, ja **sinu sülearvuti hakkab käituma nagu ta oleks kontori sisevõrgus**. Sa näed sisemisi servereid, saad SSH-ga, saad failiserveri lahti — kõik täpselt nagu töökohas.
-
-```
-Sinu kodus                                 Ettevõte
-sülearvuti  ──── 4G ──── INTERNET ──── VPN-server ──── sisevõrk
-   │                                                    │
-   └─── tunnel (krüpteeritud) ───────────────────────────┘
+```text
+Sülearvuti ─ INTERNET ─ VPN-server ─ sisevõrk
 ```
 
-Kogu sinu kodus tehtud liiklus, mis kontori võrku läheb, käib tuneli kaudu. ISP näeb ainult, et sinu sülearvuti räägib **ühe IP-aadressiga ettevõtte servereil** — ei näe, et sa avad failiserverit, ei näe, mis sa SSH-s teed.
+Kasutaja käivitab VPN-kliendi, logib sisse ja tema arvuti saab turvalise ühenduse ettevõtte sisevõrguga.
 
-> 💡 **Eristamiseks:**
->
-> | Tüüp | Otspunktid | Kasutuskoht |
-> |---|---|---|
-> | **Site-to-site VPN** | Kaks ruuterit (kaks võrku) | Tallinn↔Tartu, Eesti↔Frankfurt datakeskused |
-> | **Remote access VPN** | Üks arvuti ↔ üks server | Sina kodus → ettevõtte sisevõrk |
+### 5.3 Teenusepakkujate ja suurte süsteemide vahel
 
-Mõlemad kasutavad sageli sama tehnoloogiat (IPSec, või tänapäeval WireGuard / OpenVPN), aga **konfiguratsioon ja kasutaja kogemus on erinevad**.
+VPN-e kasutatakse ka andmekeskuste, pilveteenuste ja teenusepakkujate võrkude vahel. Mõnikord haldab VPN-i ettevõte ise, mõnikord pakub seda teenusena operaator.
+
+**Järeldus:** sama põhimõte, aga erinevad kasutusstsenaariumid.
 
 ---
 
-## 6. Aga mida me täpselt kaitseme — CIA
+## 6. Mida me VPN-iga kaitseme
 
-VPN ei ole maagia. Ta lubab täpselt **kolme asja**, mitte rohkem. Nendele otsime krüpteerimisest lahendust. Inglise keeles **CIA** — Confidentiality, Integrity, Authentication.
+VPN ei ole lihtsalt „turvaline toru“. Tavaliselt räägitakse kolmest põhieesmärgist, mida lühendatakse tähtedega **CIA**.
 
-### 6.1 Konfidentsiaalsus (Confidentiality)
+### 6.1 Konfidentsiaalsus
 
-**Sõnum, mida sa saadad, ei ole loetav kellelegi peale saaja.**
+Konfidentsiaalsus tähendab, et kõrvaline osapool ei saa sinu andmeid lugeda. Seda tagab krüpteerimine. Levinud algoritmid on näiteks AES ja ChaCha20.
 
-Krüpteerimise abil teisendatakse sinu sisu (lepingu PDF, e-kiri, parool) nõnda, et see näeb välja juhuslik müra. Ainult kellel on **õige võti**, saab sõnumi tagasi originaaliks. Algoritmid: AES (kõikjal levinud), ChaCha20 (uus, mobiilis populaarne).
+### 6.2 Terviklus
 
-> ✏️ **Mõtle:** mis siis, kui sa sõnumi krüpteerid, aga keegi püüab kõik su krüpteeritud paketid kinni — terabaitide kaupa? Kas ta saab kunagi võtme kätte?
->
-> Vastus: tänapäeva algoritmidega (AES-256), **ei**. Isegi maailma kõige võimsamad superarvutid vajaksid universumi vanusest pikemat aega ühe võtme leidmiseks. **Krüpteerimine on praktiliselt murdmatu, kui võti on piisavalt pikk.**
+Terviklus tähendab, et andmeid ei ole teel muudetud. Vastuvõtja peab saama kontrollida, et sõnum on sama, mis saatja teele pani.
 
-### 6.2 Terviklikkus (Integrity)
+### 6.3 Autentimine
 
-**Sõnum, mis vastu võetakse, on sama nagu sõnum, mis saadeti — keegi pole teda teel muutnud.**
+Autentimine tähendab, et sa tead, kellega sa tegelikult suhtled. VPN ei tohi luua tunnelit vale osapoolega.
 
-Lihtne näide, miks see tähtis: panga ülekanne 100 € → muudetakse teel 10 000 € peale, krüpteerimisega kasvõi. Saaja näeb 10 000 €-t. Sa saadad lepingu ühe versiooniga, saaja saab teise. Vaja on viisi, kuidas **kontrollida, et keegi pole bitti muutnud**.
+Selleks kasutatakse näiteks:
 
-Lahendus: **hash** (räsi). Saatja arvutab paki sisust kindla pikkusega "sõrmejälje" (algoritmid: SHA-256, SHA-1, MD5 — viimased kaks vananenud). Saatja paneb selle paki külge. Saaja arvutab uuesti — kui sõrmejäljed kattuvad, on sisu sama. Kui erinevad, **keegi muutis**.
+- eeljagatud võtit (pre-shared key)
+- sertifikaate
 
-### 6.3 Autentimine (Authentication)
-
-**Sa tead, kellega sa päriselt räägid — see pole keegi, kes mängib end Tartu ruuteriks.**
-
-Krüpteerimine ilma autentimiseta on tühi: krüpteerid sõnumi "Tartu ruuterile", aga tegelikult on pealtkuulaja vahepeal end Tartu ruuteriks teinud. Sina krüpteerid talle võtmega, mille tema teleks tegi. Kogu kaitse on katki.
-
-Autentimiseks on kaks moodust:
-
-- **Pre-shared key** (eeljagatud võti) — mõlemal poolel on sama saladus, mille nad eelnevalt kokku leppisid. Lihtne, töötab, aga ei skaleeru — kümne filiaali jaoks pead kümme võtit haldama, ja kui üks lekib, peab kõik vahetama.
-- **Sertifikaat** — iga osaline omab digitaalset isikutunnistust, mida on signinud usaldatud osapool (Certificate Authority). Sama loogika kui ID-kaardiga: keegi (riik) garanteerib, et see kaart kuulub sellele inimesele. Skaleerub paremini, aga vajab keerukamat infrastruktuuri.
-
-> ✏️ **Aruta paariga:** kumb meetod sobib paremini kahe filiaaliga firmale? Kumb 200 töötajaga ettevõttele, kus pooled töötavad kodust? Põhjenda.
+**Järeldus:** ainult krüpteerimisest ei piisa. Vaja on ka kontrolli, et andmeid pole muudetud ja et teine osapool on päriselt õige.
 
 ---
 
-## 7. Krüpto kahekordne süsteem — kiirelt meenutamiseks
+## 7. Kuidas krüptograafia siin töötab
 
-Sa oled krüpteerimisest kuulnud, kõik IT-õppes käivad selle juurest läbi. Kiire meenutus, sest järgmistel päevadel tugineme sellele.
+VPN-ides kasutatakse tavaliselt kahte tüüpi krüpteerimist koos.
 
-**Sümmeetriline krüpteerimine** — sama võti krüpteerib ja dekrüpteerib. Mõlemal poolel peab see sama võti olema. **Kiire**, aga **võtme jagamise probleem**: kuidas mõlemale poolele võti turvaliselt jagada, kui kanal pole veel turvaline? Algoritmid: AES, ChaCha20.
+### 7.1 Sümmeetriline krüpteerimine
 
-**Asümmeetriline krüpteerimine** — kaks võtit ühel inimesel: **avalik** (saab igaüks) ja **privaatne** (hoiad endale). Mis on krüpteeritud avalikuga, dekrüpteerub ainult privaatsega. **Aeglane**, aga **võtmejagamise probleem lahendatud**. Algoritmid: RSA, ECC.
+Sümmeetrilise krüpteerimise puhul kasutatakse sama võtit nii krüpteerimiseks kui ka dekrüpteerimiseks. See on kiire ja sobib hästi suure andmemahu jaoks.
 
-**Kuidas need koos töötavad VPN-is** (ja paljudes muudes kohtades — HTTPS, SSH):
+Näited: AES, ChaCha20.
 
-```
-1. Asümmeetriline  ──→  Kahepoolne autentimine + sümmeetrilise võtme jagamine
-                        (kasutatakse Diffie-Hellman algoritmi)
-                  
-2. Sümmeetriline   ──→  Tegelik andmevoog (kõik su päris paketid)
-                        kasutab kiiret sümmeetrilist krüpteerimist
-```
+### 7.2 Asümmeetriline krüpteerimine
 
-Esimene osa on aeglane, aga **lühike** — paar paketti vahetatakse, võti tuletub. Teine osa on kiire, see kestab terve sessiooni jooksul.
+Asümmeetrilise krüpteerimise puhul on kasutusel avalik ja privaatne võti. See on aeglasem, kuid sobib võtmevahetuseks ja autentimiseks.
 
-> 💡 **Üks asi meeles pidada:** **asümmeetriline = võtmevahetuseks**, **sümmeetriline = andmete jaoks**. Kahe asja jaoks kaks erinevat tööriista, sest nad lahendavad erinevaid probleeme.
+Näited: RSA, ECC.
 
----
+### 7.3 Miks neid koos kasutatakse
 
-## 8. Tänase päeva kokkuvõte
+Tüüpiline loogika on järgmine:
 
-**VLAN ei sobi.** VLAN töötab seal, kus sa kaableid kontrollid. Üle interneti ei lähe.
+1. Asümmeetrilise krüptograafia abil tuvastavad osapooled teineteist ja lepivad võtme kokku.
+2. Edasine andmeliiklus krüpteeritakse kiire sümmeetrilise algoritmiga.
 
-**Liisitud liin liiga kallis.** Kahe-kolme kontori jaoks võimalik, aga ei skaleeru, ja krüpteerimist ei pakuks nagunii.
-
-**Lahtine internet — kaks probleemi.** Esiteks privaatsed IP-d ei marsruudita. Teiseks isegi kui marsruutuks, oleks kõik avatud — pealtkuulamine, muutmine, võltsimine.
-
-**VPN = tunneerimine + krüpteerimine.** Pakk paki sisse (välimisel päisel on avalikud aadressid, sees on sinu päris pakett), kogu sees olev sisu krüpteeritud.
-
-**Kaks põhilist kasutusjuhtu.** Site-to-site (kaks ruuterit, kaks võrku) ja remote access (üks arvuti, üks server).
-
-**Kolm kohta veel, kus VPN-i kohtad.** Serverite vahel (datakeskused, pilve-pilve), teenusepakkujate vahel (SWIFT, MPLS VPN), üksikute kasutajate jaoks (remote access — kodutöö).
-
-**Kolm asja, mida me kaitseme.** Konfidentsiaalsus (krüpteerimine), terviklus (hash), autentimine (pre-shared key või sertifikaat). Kõik kolm on vajalikud, ükski ei asenda teist.
-
-**Asümmeetriline + sümmeetriline koos.** Asümmeetriline teeb võtmevahetuse, sümmeetriline teeb tegeliku andmevoo. Standardne muster mitte ainult VPN-is, vaid igal pool — HTTPS, SSH, kõik.
+Seda sama põhimõtet kasutatakse ka mujal, näiteks HTTPS-is ja SSH-s.
 
 ---
 
-## Mida me **homme** vaatame
+## 8. Tänase päeva põhiidee
 
-Täna oleme suure pildi laual — **mida me tahame ja miks**. Homme läheme **kuidas täpselt** osasse.
-
-Päevakorras:
-
-- **IPSec** kui kuldstandard
-- **IKE Phase 1 ja Phase 2** — kuidas kaks ruuterit kokku lepivad
-- **AH vs ESP** — kaks protokolli IPSec-i sees
-- **Transport vs tunnel mode** — millal kumba kasutada
-- **NAT ja IPSec probleem** — miks ei taha kokku saada
-- **Firewall ja VPN samas seadmes** — kuidas need koos töötavad
-
-**Kolmandal päeval** ehitame ise kahe ruuteri vahele site-to-site IPSec-tunneli GNS3-s.
-
----
-
-## Allikad ja lugemine kodus
-
-### Kui tahad rohkem näha enne homset
-
-| Mis | URL | Kestus |
-|---|---|---|
-| Cloudflare — What is a VPN? | https://www.cloudflare.com/learning/access-management/what-is-a-vpn/ | 5 min lugeda |
-| Cisco — VPN overview | https://www.cisco.com/c/en/us/products/security/vpn-endpoint-security-clients/what-is-vpn.html | 10 min lugeda |
-| NetworkLessons — VPN intro | https://networklessons.com/cisco/ccna-routing-switching-200-125/introduction-to-vpns | 15 min lugeda |
-
-### Lihtne mõtteharjutus
-
-Loe läbi üks Eesti suurfirma turvalisuse-aruanne (`security report`) — näiteks Coopi, LHV või Eesti Energia avalik info infoturbe kohta. Pane tähele, kus seal **VPN-i sõna** mainitakse ja kuidas. Sa hakkad nüüd mustreid nägema.
-
----
-
-*Järgmine fail: `02_vpn_ipsec_syvitsi.md` — IPSec arhitektuur ja IKE detailid.*
+- VLAN ei lahenda kahe linna vahelist ühendust üle avaliku interneti.
+- Oma liin töötab, kuid on sageli liiga kallis.
+- Tavaline internet üksi ei taga ei turvalisust ega sisevõrgu aadresside toimivat edastust.
+- VPN ühendab kaks vajalikku asja: tunneleerimise ja krüpteerimise.
+- VPN-i kasutatakse nii võrkude vahel kui ka üksiku kasutaja ühendamiseks ettevõtte sisevõrku.
+- Kaitsta tuleb kolme omadust: konfidentsiaalsust, terviklust ja autentimist.
